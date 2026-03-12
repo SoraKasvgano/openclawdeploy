@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Deploy Swagger UI</title>
+  <link rel="stylesheet" href="./swagger-ui.css">
+  <style>
+    body {
+      margin: 0;
+      background: #eef2f5;
+    }
+
+    .top-note {
+      padding: 14px 18px;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      color: #243246;
+      background: #ffffff;
+      border-bottom: 1px solid rgba(36, 50, 70, 0.08);
+    }
+
+    .top-note code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #f4f6f8;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-note">
+    使用 <code>X-API-Token</code> 或 <code>Authorization: Bearer &lt;ai_token&gt;</code> 调用受保护接口。
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="./swagger-ui-bundle.js"></script>
+  <script src="./swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.ui = SwaggerUIBundle({
+      url: '/openapi.json',
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+      layout: 'BaseLayout',
+      persistAuthorization: true,
+      docExpansion: 'list',
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Deploy Server</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="ambient"></div>
+  <main class="layout">
+    <section id="authShell" class="auth-shell">
+      <div class="brand-card">
+        <p class="eyebrow">OpenClaw Deploy / Server</p>
+        <h1>服务端控制台</h1>
+        <p class="lead">用户、设备与配置统一收口到一个管理面板，客户端通过轻量心跳拉取配置更新。</p>
+      </div>
+      <div class="auth-card">
+        <div class="tabs">
+          <button class="tab active" data-tab="login">登录</button>
+          <button class="tab" data-tab="register">注册</button>
+          <button class="tab" data-tab="forgot">忘记密码</button>
+          <button class="tab" data-tab="reset">重置密码</button>
+        </div>
+
+        <form id="loginForm" class="form-pane active">
+          <label>用户名<input name="username" required></label>
+          <label>密码<input type="password" name="password" required></label>
+          <button class="button primary" type="submit">登录</button>
+        </form>
+
+        <form id="registerForm" class="form-pane">
+          <label>用户名<input name="username" required></label>
+          <label>邮箱<input type="email" name="email" required></label>
+          <label>密码<input type="password" name="password" minlength="6" required></label>
+          <button class="button primary" type="submit">注册</button>
+        </form>
+
+        <form id="forgotForm" class="form-pane">
+          <label>用户名或邮箱<input name="identifier" required></label>
+          <button class="button primary" type="submit">发送重置链接</button>
+        </form>
+
+        <form id="resetForm" class="form-pane">
+          <label>重置令牌<input name="token" required></label>
+          <label>新密码<input type="password" name="new_password" minlength="6" required></label>
+          <button class="button primary" type="submit">更新密码</button>
+        </form>
+
+        <p id="registerHint" class="hint"></p>
+      </div>
+    </section>
+
+    <section id="dashboard" class="dashboard hidden">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <p class="eyebrow">Workspace</p>
+          <h2 id="userTitle">-</h2>
+          <p id="userMeta" class="muted"></p>
+          <div class="sidebar-links admin-only hidden">
+            <a id="swaggerLink" class="mini-link" href="/swagger/" target="_blank" rel="noreferrer">Swagger</a>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-link active" data-view="overview">概览</button>
+          <button class="nav-link" data-view="devices">设备管理</button>
+          <button class="nav-link admin-only hidden" data-view="admin">管理员</button>
+        </nav>
+        <button id="logoutButton" class="button danger">退出登录</button>
+      </aside>
+
+      <section class="content">
+        <section id="overviewView" class="view active">
+          <div class="panel stat-panel">
+            <div class="stat"><span>用户数</span><strong id="statUsers">0</strong></div>
+            <div class="stat"><span>设备数</span><strong id="statDevices">0</strong></div>
+            <div class="stat"><span>在线节点</span><strong id="statOnline">0</strong></div>
+          </div>
+          <div class="panel panel-tight">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Account</p>
+                <h3>账户设置</h3>
+              </div>
+            </div>
+            <p class="muted section-copy">可修改自己的邮箱和密码。用户名固定不可修改。</p>
+            <form id="profileForm" class="compact-grid">
+              <label class="field">
+                <span>用户名</span>
+                <input id="profileUsername" type="text" disabled>
+              </label>
+              <label class="field">
+                <span>邮箱</span>
+                <input name="email" type="email" placeholder="邮箱" required>
+              </label>
+              <label class="field field-span-2">
+                <span>新密码</span>
+                <input name="password" type="password" minlength="6" placeholder="留空表示不修改">
+              </label>
+              <div class="form-actions field-span-2">
+                <button class="button primary" type="submit">保存账户</button>
+              </div>
+            </form>
+          </div>
+          <div class="panel panel-tight overview-note admin-only hidden" id="apiNoteCard">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">API</p>
+                <h3>外部调用</h3>
+              </div>
+            </div>
+            <p class="muted">外部程序可直接使用配置文件中的 AI Token 调用受保护接口，无需先登录后台。</p>
+            <div class="code-row">
+              <span>Header</span>
+              <code id="apiHeaderValue">X-API-Token</code>
+            </div>
+            <div class="code-row">
+              <span>Swagger</span>
+              <code id="swaggerValue">/swagger/</code>
+            </div>
+          </div>
+        </section>
+
+        <section id="devicesView" class="view">
+          <div class="panel panel-tight tools">
+            <div>
+              <p class="eyebrow">Bind</p>
+              <h3>绑定设备</h3>
+            </div>
+            <div class="tools-inline">
+              <div class="inline-form">
+                <input id="bindDeviceId" placeholder="输入机器识别码">
+                <button id="bindButton" class="button primary" type="button">绑定</button>
+              </div>
+              <div class="inline-form admin-only hidden">
+                <input id="deviceOwnerFilter" placeholder="管理员按用户名筛选设备">
+                <button id="applyDeviceFilterButton" class="button secondary" type="button">筛选</button>
+                <button id="clearDeviceFilterButton" class="button secondary" type="button">清空</button>
+              </div>
+            </div>
+          </div>
+          <div id="devicesList" class="device-grid"></div>
+        </section>
+
+        <section id="adminView" class="view admin-only hidden">
+          <div class="panel panel-tight">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Security</p>
+                <h3>注册开关</h3>
+              </div>
+              <label class="toggle toggle-inline">
+                <input type="checkbox" id="registrationToggle">
+                <span>允许注册</span>
+              </label>
+            </div>
+            <p class="muted section-copy">仅管理员可操作。用于控制新用户是否允许自行注册。</p>
+          </div>
+          <div class="admin-grid">
+            <div class="panel panel-tight">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Mail</p>
+                  <h3>SMTP 配置</h3>
+                </div>
+              </div>
+              <p class="muted section-copy">找回密码邮件会使用这里的 SMTP 配置发送。留空表示仅在服务端日志输出重置链接。</p>
+              <form id="smtpForm" class="settings-form">
+                <label class="field">
+                  <span>SMTP Host</span>
+                  <input name="host" placeholder="smtp.example.com">
+                </label>
+                <label class="field">
+                  <span>Port</span>
+                  <input name="port" type="number" min="1" placeholder="25">
+                </label>
+                <label class="field">
+                  <span>Username</span>
+                  <input name="username" placeholder="用户名">
+                </label>
+                <label class="field">
+                  <span>From</span>
+                  <input name="from" type="email" placeholder="noreply@example.com">
+                </label>
+                <label class="field field-span-2">
+                  <span>Password</span>
+                  <input name="password" type="password" placeholder="SMTP 密码">
+                </label>
+                <div class="form-actions field-span-2">
+                  <button class="button primary" type="submit">保存 SMTP</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel panel-tight">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Users</p>
+                  <h3>用户管理</h3>
+                </div>
+              </div>
+              <p class="muted section-copy">保持账户、权限和设备归属关系清晰，避免重复账号和悬空设备。</p>
+              <form id="createUserForm" class="admin-form compact-grid">
+                <label class="field">
+                  <span>用户名</span>
+                  <input name="username" placeholder="用户名" required>
+                </label>
+                <label class="field">
+                  <span>邮箱</span>
+                  <input name="email" type="email" placeholder="邮箱" required>
+                </label>
+                <label class="field">
+                  <span>密码</span>
+                  <input name="password" type="password" placeholder="密码" minlength="6" required>
+                </label>
+                <label class="toggle toggle-box">
+                  <input name="is_admin" type="checkbox">
+                  <span>管理员</span>
+                </label>
+                <div class="form-actions">
+                  <button class="button primary" type="submit">新增用户</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <div id="usersList" class="user-grid"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

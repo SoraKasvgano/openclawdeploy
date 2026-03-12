@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Client</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="background-grid"></div>
+  <main class="shell">
+    <section id="authShell" class="auth-shell">
+      <div class="auth-card">
+        <p class="eyebrow">OpenClaw Deploy / Client</p>
+        <h1>本地访问验证</h1>
+        <p class="summary">客户端网页和本地 API 现在需要登录后才能访问。该验证只保护本地界面，不影响客户端与服务端的心跳通讯。</p>
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span>用户名</span>
+            <input name="username" value="admin" required>
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input name="password" type="password" value="admin" required>
+          </label>
+          <button class="button primary" type="submit">登录</button>
+        </form>
+        <p class="hint">首次启动默认账号为 `admin / admin`，登录后可在页面内修改。</p>
+      </div>
+    </section>
+
+    <section id="dashboardShell" class="hidden">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">OpenClaw Deploy / Client</p>
+          <h1>节点侧控制台</h1>
+          <p class="summary">查看机器识别码、同步状态和本机 `openclaw.json`，并通过本地 Web 界面完成维护。</p>
+        </div>
+        <div class="action-row">
+          <span id="serverCommBadge" class="badge neutral">服务端未配置</span>
+          <button id="syncButton" class="button primary">立即同步</button>
+          <button id="saveButton" class="button danger">保存并应用配置</button>
+          <button id="logoutButton" class="button secondary">退出登录</button>
+        </div>
+      </section>
+
+      <section class="panel identity-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Identity</p>
+            <h2>机器识别码</h2>
+          </div>
+          <span id="networkBadge" class="badge neutral">检测中</span>
+        </div>
+        <div class="identity-layout">
+          <div>
+            <pre id="deviceId" class="code-block"></pre>
+            <dl class="meta-grid">
+              <div><dt>Hostname</dt><dd id="hostnameValue">-</dd></div>
+              <div><dt>内网 IP</dt><dd id="ipValue">-</dd></div>
+              <div><dt>MAC</dt><dd id="macValue">-</dd></div>
+              <div><dt>服务端</dt><dd id="serverValue">未配置</dd></div>
+            </dl>
+          </div>
+          <div class="qr-card">
+            <div id="qrPreview" class="qr-preview"></div>
+            <p class="hint">本地矩阵图用于快速核对机器识别码；若要扫码复制，建议在服务端侧继续扩展真实二维码能力。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">OpenClaw</p>
+            <h2>本机配置</h2>
+          </div>
+          <span id="syncStatus" class="muted">尚未同步</span>
+        </div>
+        <textarea id="configEditor" class="editor" spellcheck="false"></textarea>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Access</p>
+            <h2>本地访问账户</h2>
+          </div>
+        </div>
+        <p class="hint">该账户只用于登录当前客户端网页和本地 API，不影响客户端与服务端之间的通讯。</p>
+        <form id="accountForm" class="account-grid">
+          <label class="field">
+            <span>用户名</span>
+            <input name="username" required>
+          </label>
+          <label class="field">
+            <span>新密码</span>
+            <input name="password" type="password" minlength="3" placeholder="留空表示不修改">
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">保存本地访问账户</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel compact">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Runtime</p>
+            <h2>运行信息</h2>
+          </div>
+        </div>
+        <dl class="meta-grid">
+          <div><dt>Web 监听</dt><dd id="listenValue">-</dd></div>
+          <div><dt>配置路径</dt><dd id="configPathValue">-</dd></div>
+          <div><dt>OpenClaw 路径</dt><dd id="openclawPathValue">-</dd></div>
+          <div><dt>同步间隔</dt><dd id="intervalValue">-</dd></div>
+          <div><dt>通讯状态</dt><dd id="commStatusValue">-</dd></div>
+          <div><dt>上次同步</dt><dd id="lastSyncAtValue">-</dd></div>
+        </dl>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
