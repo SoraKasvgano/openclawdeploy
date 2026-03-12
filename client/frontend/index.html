@@ -12,20 +12,14 @@
     <section id="authShell" class="auth-shell">
       <div class="auth-card">
         <p class="eyebrow">OpenClaw Deploy / Client</p>
-        <h1>本地访问验证</h1>
-        <p class="summary">客户端网页和本地 API 现在需要登录后才能访问。该验证只保护本地界面，不影响客户端与服务端的心跳通讯。</p>
+        <h1 style="font-size:20px;">本地访问验证</h1>
+        <p class="summary" style="font-size:13px;">客户端网页和本地 API 需要登录后才能访问。该验证只保护本地界面，不影响与服务端的心跳通讯。</p>
         <form id="loginForm" class="auth-form">
-          <label class="field">
-            <span>用户名</span>
-            <input name="username" value="admin" required>
-          </label>
-          <label class="field">
-            <span>密码</span>
-            <input name="password" type="password" value="admin" required>
-          </label>
+          <label class="field"><span>用户名</span><input name="username" value="admin" required></label>
+          <label class="field"><span>密码</span><input name="password" type="password" value="admin" required></label>
           <button class="button primary" type="submit">登录</button>
         </form>
-        <p class="hint">首次启动默认账号为 `admin / admin`，登录后可在页面内修改。</p>
+        <p class="hint" style="margin-top:10px;">首次启动默认账号 admin / admin，登录后可修改。</p>
       </div>
     </section>
 
@@ -34,17 +28,17 @@
         <div>
           <p class="eyebrow">OpenClaw Deploy / Client</p>
           <h1>节点侧控制台</h1>
-          <p class="summary">查看机器识别码、同步状态和本机 `openclaw.json`，并通过本地 Web 界面完成维护。</p>
+          <p class="summary">查看识别码、同步状态和本机 openclaw.json 配置。</p>
         </div>
         <div class="action-row">
           <span id="serverCommBadge" class="badge neutral">服务端未配置</span>
           <button id="syncButton" class="button primary">立即同步</button>
-          <button id="saveButton" class="button danger">保存并应用配置</button>
+          <button id="saveButton" class="button danger">保存并应用</button>
           <button id="logoutButton" class="button secondary">退出登录</button>
         </div>
       </section>
 
-      <section class="panel identity-panel">
+      <section class="panel">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Identity</p>
@@ -64,7 +58,7 @@
           </div>
           <div class="qr-card">
             <div id="qrPreview" class="qr-preview"></div>
-            <p class="hint">本地矩阵图用于快速核对机器识别码；若要扫码复制，建议在服务端侧继续扩展真实二维码能力。</p>
+            <p class="hint" style="margin-top:8px;">这里展示的是标准二维码，扫码后内容就是当前机器识别码。</p>
           </div>
         </div>
       </section>
@@ -75,9 +69,50 @@
             <p class="eyebrow">OpenClaw</p>
             <h2>本机配置</h2>
           </div>
-          <span id="syncStatus" class="muted">尚未同步</span>
+          <span id="syncStatus" class="muted" style="font-size:12px;">尚未同步</span>
         </div>
         <textarea id="configEditor" class="editor" spellcheck="false"></textarea>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">OpenClaw Path</p>
+            <h2>配置文件路径</h2>
+          </div>
+        </div>
+        <p class="hint" style="margin-bottom:10px;">支持直接输入、恢复默认路径，或使用本地目录浏览器图形化选择。保存后立即热生效，不需要重启客户端。</p>
+        <p class="hint" style="margin-bottom:10px;">默认路径：<code id="openclawDefaultPath">-</code></p>
+        <form id="openclawPathForm" class="account-grid">
+          <label class="field">
+            <span>openclaw.json 路径</span>
+            <input name="openclaw_config_path" placeholder="例如 /home/user/.openclaw/openclaw.json">
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">保存路径</button>
+            <button id="openclawPathDefaultButton" class="button secondary" type="button">恢复默认路径</button>
+            <button id="openclawPathBrowseButton" class="button secondary" type="button">图形化选择</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Server</p>
+            <h2>服务端连接</h2>
+          </div>
+        </div>
+        <p class="hint" style="margin-bottom:10px;">这里修改的是 `config.json` 里的服务端地址。保存后立即热生效，无需重启客户端。</p>
+        <form id="serverForm" class="account-grid">
+          <label class="field">
+            <span>服务端地址</span>
+            <input name="server_url" placeholder="例如 http://127.0.0.1:18080">
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">保存服务端地址</button>
+          </div>
+        </form>
       </section>
 
       <section class="panel">
@@ -87,18 +122,12 @@
             <h2>本地访问账户</h2>
           </div>
         </div>
-        <p class="hint">该账户只用于登录当前客户端网页和本地 API，不影响客户端与服务端之间的通讯。</p>
+        <p class="hint" style="margin-bottom:10px;">该账户只用于登录当前客户端网页和本地 API，不影响与服务端之间的通讯。</p>
         <form id="accountForm" class="account-grid">
-          <label class="field">
-            <span>用户名</span>
-            <input name="username" required>
-          </label>
-          <label class="field">
-            <span>新密码</span>
-            <input name="password" type="password" minlength="3" placeholder="留空表示不修改">
-          </label>
+          <label class="field"><span>用户名</span><input name="username" required></label>
+          <label class="field"><span>新密码</span><input name="password" type="password" minlength="3" placeholder="留空表示不修改"></label>
           <div class="form-actions">
-            <button class="button primary" type="submit">保存本地访问账户</button>
+            <button class="button primary" type="submit">保存本地账户</button>
           </div>
         </form>
       </section>
@@ -121,6 +150,26 @@
       </section>
     </section>
   </main>
+
+  <div id="pathBrowserModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="panel-header" style="margin-bottom:10px;">
+        <div>
+          <p class="eyebrow">Local Filesystem</p>
+          <h2>选择 openclaw.json 路径</h2>
+        </div>
+        <button id="pathBrowserCloseButton" class="button secondary" type="button">关闭</button>
+      </div>
+      <p class="hint" style="margin-bottom:10px;">点击目录继续进入；点击 JSON 文件可直接回填路径；也可以选择当前目录并自动使用 `openclaw.json` 文件名。</p>
+      <div class="browser-toolbar">
+        <button id="pathBrowserUpButton" class="button secondary" type="button">上一级</button>
+        <button id="pathBrowserUseCurrentButton" class="button primary" type="button">选择当前目录</button>
+      </div>
+      <div id="pathBrowserCurrent" class="browser-current">-</div>
+      <div id="pathBrowserRoots" class="browser-roots"></div>
+      <div id="pathBrowserEntries" class="browser-list"></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
   <script src="/app.js" defer></script>

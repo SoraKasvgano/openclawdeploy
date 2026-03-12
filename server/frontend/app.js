@@ -11,6 +11,8 @@ const state = {
   summary: { user_count: 0, device_count: 0, online_device_count: 0 },
   activeView: 'overview',
   deviceOwnerFilter: '',
+  expandedDevices: new Set(),
+  expandedUsers: new Set(),
 };
 
 const toast = document.getElementById('toast');
@@ -35,6 +37,12 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function activateTab(name) {
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.tab === name);
@@ -57,40 +65,61 @@ function activateView(name) {
 function renderDevices() {
   const container = document.getElementById('devicesList');
   if (!state.devices.length) {
-    container.innerHTML = '<div class="panel panel-tight"><p class="muted">暂无设备。可先输入机器识别码完成绑定，客户端上线后会自动回填状态。</p></div>';
+    container.innerHTML = '<p class="empty-state">暂无设备。输入机器识别码完成绑定，客户端上线后自动回填状态。</p>';
     return;
   }
 
-  container.innerHTML = state.devices.map((device) => `
-    <article class="device-card">
-      <div class="device-head">
-        <div>
-          <h3>${device.remark || device.device_id}</h3>
-          <p class="muted">${device.device_id}</p>
-        </div>
-        <span class="chip ${device.online ? '' : 'offline'}">${device.online ? '在线' : '离线'}</span>
-      </div>
-      <div class="meta">
-        <div><strong>Owner</strong><p>${device.owner_username || '-'}</p></div>
-        <div><strong>Hostname</strong><p>${device.status?.hostname || '-'}</p></div>
-        <div><strong>IP</strong><p>${device.status?.local_ip || '-'}</p></div>
-        <div><strong>MAC</strong><p>${device.status?.mac || '-'}</p></div>
-        <div><strong>系统</strong><p>${device.status?.system_version || '-'}</p></div>
-        <div><strong>最后心跳</strong><p>${device.last_seen_at || '-'}</p></div>
-      </div>
-      <label class="field"> <span>备注</span>
-        <input data-remark-input="${device.device_id}" value="${device.remark || ''}" placeholder="自定义备注名">
-      </label>
-      <label class="field"> <span>openclaw.json</span>
-        <textarea data-config-input="${device.device_id}">${device.pending_openclaw_json || device.openclaw_json || ''}</textarea>
-      </label>
-      <div class="actions">
-        <button class="button primary" data-action="save-remark" data-device-id="${device.device_id}">保存备注</button>
-        <button class="button primary" data-action="save-config" data-device-id="${device.device_id}">下发配置</button>
-        <button class="button danger" data-action="delete-device" data-device-id="${device.device_id}">删除设备</button>
-      </div>
-    </article>
-  `).join('');
+  const isAdmin = state.me?.is_admin;
+  let html = '<table class="device-table"><thead><tr>';
+  html += '<th>状态</th><th>备注 / 名称</th><th>识别码</th>';
+  if (isAdmin) html += '<th>归属</th>';
+  html += '<th>Hostname</th><th>IP</th><th>最后心跳</th>';
+  html += '</tr></thead><tbody>';
+
+  state.devices.forEach((device) => {
+    const expanded = state.expandedDevices.has(device.device_id);
+    const statusChip = device.online
+      ? '<span class="chip">在线</span>'
+      : '<span class="chip offline">离线</span>';
+    const displayName = escapeHTML(device.remark || device.device_id.substring(0, 12) + '…');
+
+    html += `<tr class="${expanded ? 'expanded' : ''}" data-toggle-device="${escapeHTML(device.device_id)}">`;
+    html += `<td>${statusChip}</td>`;
+    html += `<td>${displayName}</td>`;
+    html += `<td class="device-id-cell">${escapeHTML(device.device_id)}</td>`;
+    if (isAdmin) html += `<td>${escapeHTML(device.owner_username || '-')}</td>`;
+    html += `<td>${escapeHTML(device.status?.hostname || '-')}</td>`;
+    html += `<td>${escapeHTML(device.status?.local_ip || '-')}</td>`;
+    html += `<td>${escapeHTML(device.last_seen_at || '-')}</td>`;
+    html += '</tr>';
+
+    if (expanded) {
+      const colSpan = isAdmin ? 7 : 6;
+      const configVal = escapeHTML(device.pending_openclaw_json || device.openclaw_json || '');
+      html += `<tr class="device-expand-row"><td colspan="${colSpan}">`;
+      html += '<div class="device-expand-content">';
+
+      html += '<div class="device-meta-row">';
+      html += `<span>MAC: <strong>${escapeHTML(device.status?.mac || '-')}</strong></span>`;
+      html += `<span>系统: <strong>${escapeHTML(device.status?.system_version || '-')}</strong></span>`;
+      if (isAdmin) html += `<span>归属: <strong>${escapeHTML(device.owner_username || '-')}</strong></span>`;
+      html += '</div>';
+
+      html += `<label class="field"><span>备注</span><input data-remark-input="${escapeHTML(device.device_id)}" value="${escapeHTML(device.remark || '')}" placeholder="自定义备注名"></label>`;
+      html += `<label class="field"><span>openclaw.json</span><textarea data-config-input="${escapeHTML(device.device_id)}">${configVal}</textarea></label>`;
+
+      html += '<div class="form-actions" style="grid-column:1/-1;">';
+      html += `<button class="button primary sm" data-action="save-remark" data-device-id="${escapeHTML(device.device_id)}">保存备注</button>`;
+      html += `<button class="button primary sm" data-action="save-config" data-device-id="${escapeHTML(device.device_id)}">下发配置</button>`;
+      html += `<button class="button danger sm" data-action="delete-device" data-device-id="${escapeHTML(device.device_id)}">删除设备</button>`;
+      html += '</div>';
+
+      html += '</div></td></tr>';
+    }
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 function renderUsers() {
@@ -100,52 +129,51 @@ function renderUsers() {
     return;
   }
   if (!state.users.length) {
-    container.innerHTML = '<div class="panel panel-tight"><p class="muted">暂无用户数据。</p></div>';
+    container.innerHTML = '<p class="empty-state">暂无用户数据。</p>';
     return;
   }
 
-  container.innerHTML = state.users.map((user) => `
-    <article class="user-card">
-      <div class="user-head">
-        <div>
-          <h3>${user.username}</h3>
-          <p class="muted">${user.email}</p>
-        </div>
-        <span class="chip ${user.is_admin ? '' : 'offline'}">${user.is_admin ? '管理员' : '普通用户'}</span>
-      </div>
-      <div class="meta">
-        <div><strong>设备数</strong><p>${user.device_count}</p></div>
-        <div><strong>创建时间</strong><p>${user.created_at}</p></div>
-        <div><strong>更新时间</strong><p>${user.updated_at}</p></div>
-      </div>
-      <div class="compact-grid">
-        <label class="field">
-          <span>邮箱</span>
-          <input data-user-email="${user.id}" value="${user.email}">
-        </label>
-        <label class="field">
-          <span>新密码</span>
-          <input type="password" data-user-password="${user.id}" placeholder="留空表示不修改">
-        </label>
-        <label class="toggle toggle-box">
-          <input type="checkbox" data-user-admin="${user.id}" ${user.is_admin ? 'checked' : ''}>
-          <span>管理员</span>
-        </label>
-      </div>
-      <div class="actions">
-        <button class="button primary" data-action="save-user" data-user-id="${user.id}">保存用户</button>
-        <button class="button danger" data-action="delete-user" data-user-id="${user.id}">删除用户</button>
-      </div>
-    </article>
-  `).join('');
+  let html = '<table class="user-table"><thead><tr>';
+  html += '<th>用户名</th><th>邮箱</th><th>角色</th><th>设备数</th><th>创建时间</th>';
+  html += '</tr></thead><tbody>';
+
+  state.users.forEach((user) => {
+    const expanded = state.expandedUsers.has(String(user.id));
+    const roleChip = user.is_admin
+      ? '<span class="chip admin-chip">管理员</span>'
+      : '<span class="chip user-chip">用户</span>';
+
+    html += `<tr class="${expanded ? 'expanded' : ''}" data-toggle-user="${user.id}">`;
+    html += `<td><strong>${escapeHTML(user.username)}</strong></td>`;
+    html += `<td>${escapeHTML(user.email)}</td>`;
+    html += `<td>${roleChip}</td>`;
+    html += `<td>${user.device_count}</td>`;
+    html += `<td>${escapeHTML(user.created_at)}</td>`;
+    html += '</tr>';
+
+    if (expanded) {
+      html += '<tr class="user-expand-row"><td colspan="5">';
+      html += '<div class="user-expand-content">';
+      html += `<label class="field"><span>邮箱</span><input data-user-email="${user.id}" value="${escapeHTML(user.email)}"></label>`;
+      html += `<label class="field"><span>新密码</span><input type="password" data-user-password="${user.id}" placeholder="留空不修改"></label>`;
+      html += '<label class="toggle toggle-box">';
+      html += `<input type="checkbox" data-user-admin="${user.id}" ${user.is_admin ? 'checked' : ''}>`;
+      html += '<span>管理员</span></label>';
+      html += '<div class="form-actions" style="grid-column:1/-1;">';
+      html += `<button class="button primary sm" data-action="save-user" data-user-id="${user.id}">保存</button>`;
+      html += `<button class="button danger sm" data-action="delete-user" data-user-id="${user.id}">删除用户</button>`;
+      html += '</div>';
+      html += '</div></td></tr>';
+    }
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 function renderSMTPForm() {
   const form = document.getElementById('smtpForm');
-  if (!form) {
-    return;
-  }
-
+  if (!form) return;
   form.host.value = state.settings.smtp?.host || '';
   form.port.value = state.settings.smtp?.port || 25;
   form.username.value = state.settings.smtp?.username || '';
@@ -155,12 +183,8 @@ function renderSMTPForm() {
 
 function renderProfileForm() {
   const form = document.getElementById('profileForm');
-  if (!form || !state.me) {
-    return;
-  }
-
-  const username = document.getElementById('profileUsername');
-  username.value = state.me.username || '';
+  if (!form || !state.me) return;
+  document.getElementById('profileUsername').value = state.me.username || '';
   form.email.value = state.me.email || '';
   form.password.value = '';
 }
@@ -174,9 +198,7 @@ function renderShell() {
     ? '当前允许用户自行注册。'
     : '当前已关闭用户注册。';
 
-  if (!authed) {
-    return;
-  }
+  if (!authed) return;
 
   if (!state.me.is_admin && state.activeView === 'admin') {
     state.activeView = 'overview';
@@ -261,6 +283,7 @@ async function bootstrap() {
   renderShell();
 }
 
+/* ── Tab / Nav events ── */
 document.querySelectorAll('.tab').forEach((button) => {
   button.addEventListener('click', () => activateTab(button.dataset.tab));
 });
@@ -269,6 +292,7 @@ document.querySelectorAll('.nav-link').forEach((button) => {
   button.addEventListener('click', () => activateView(button.dataset.view));
 });
 
+/* ── Auth events ── */
 document.getElementById('loginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -335,6 +359,8 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
     state.devices = [];
     state.users = [];
     state.deviceOwnerFilter = '';
+    state.expandedDevices.clear();
+    state.expandedUsers.clear();
     renderShell();
     notify('已退出登录');
   } catch (error) {
@@ -342,6 +368,7 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
   }
 });
 
+/* ── Profile ── */
 document.getElementById('profileForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -359,6 +386,7 @@ document.getElementById('profileForm').addEventListener('submit', async (event) 
   }
 });
 
+/* ── Device binding ── */
 document.getElementById('bindButton').addEventListener('click', async () => {
   const input = document.getElementById('bindDeviceId');
   try {
@@ -375,10 +403,9 @@ document.getElementById('bindButton').addEventListener('click', async () => {
   }
 });
 
+/* ── Device filter ── */
 document.getElementById('applyDeviceFilterButton').addEventListener('click', async () => {
-  if (!state.me?.is_admin) {
-    return;
-  }
+  if (!state.me?.is_admin) return;
   state.deviceOwnerFilter = document.getElementById('deviceOwnerFilter').value.trim();
   try {
     await loadDashboard();
@@ -390,9 +417,7 @@ document.getElementById('applyDeviceFilterButton').addEventListener('click', asy
 });
 
 document.getElementById('clearDeviceFilterButton').addEventListener('click', async () => {
-  if (!state.me?.is_admin) {
-    return;
-  }
+  if (!state.me?.is_admin) return;
   state.deviceOwnerFilter = '';
   document.getElementById('deviceOwnerFilter').value = '';
   try {
@@ -405,13 +430,12 @@ document.getElementById('clearDeviceFilterButton').addEventListener('click', asy
 });
 
 document.getElementById('deviceOwnerFilter').addEventListener('keydown', async (event) => {
-  if (event.key !== 'Enter') {
-    return;
-  }
+  if (event.key !== 'Enter') return;
   event.preventDefault();
   document.getElementById('applyDeviceFilterButton').click();
 });
 
+/* ── Admin: create user ── */
 document.getElementById('createUserForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -431,6 +455,7 @@ document.getElementById('createUserForm').addEventListener('submit', async (even
   }
 });
 
+/* ── Admin: SMTP ── */
 document.getElementById('smtpForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -449,6 +474,7 @@ document.getElementById('smtpForm').addEventListener('submit', async (event) => 
   }
 });
 
+/* ── Admin: registration toggle ── */
 document.getElementById('registrationToggle').addEventListener('change', async (event) => {
   try {
     await api('/api/v1/admin/settings/registration', {
@@ -463,11 +489,37 @@ document.getElementById('registrationToggle').addEventListener('change', async (
   }
 });
 
+/* ── Delegated click handler for table rows & actions ── */
 document.addEventListener('click', async (event) => {
-  const button = event.target.closest('button[data-action]');
-  if (!button) {
+  /* ─ Toggle device expand ─ */
+  const deviceRow = event.target.closest('tr[data-toggle-device]');
+  if (deviceRow && !event.target.closest('button, input, textarea, label')) {
+    const id = deviceRow.dataset.toggleDevice;
+    if (state.expandedDevices.has(id)) {
+      state.expandedDevices.delete(id);
+    } else {
+      state.expandedDevices.add(id);
+    }
+    renderDevices();
     return;
   }
+
+  /* ─ Toggle user expand ─ */
+  const userRow = event.target.closest('tr[data-toggle-user]');
+  if (userRow && !event.target.closest('button, input, textarea, label')) {
+    const id = String(userRow.dataset.toggleUser);
+    if (state.expandedUsers.has(id)) {
+      state.expandedUsers.delete(id);
+    } else {
+      state.expandedUsers.add(id);
+    }
+    renderUsers();
+    return;
+  }
+
+  /* ─ Action buttons ─ */
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
 
   try {
     if (button.dataset.action === 'save-remark') {
@@ -492,13 +544,9 @@ document.addEventListener('click', async (event) => {
 
     if (button.dataset.action === 'delete-device') {
       const deviceId = button.dataset.deviceId;
-      const confirmed = window.confirm('确认删除该设备记录？在线客户端下次心跳后可能会重新出现。');
-      if (!confirmed) {
-        return;
-      }
-      await api(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
-        method: 'DELETE',
-      });
+      if (!window.confirm('确认删除该设备记录？')) return;
+      await api(`/api/v1/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+      state.expandedDevices.delete(deviceId);
       notify('设备已删除');
     }
 
@@ -516,10 +564,12 @@ document.addEventListener('click', async (event) => {
 
     if (button.dataset.action === 'delete-user') {
       const userId = button.dataset.userId;
+      if (!window.confirm('确认删除该用户？')) return;
       await api(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
         method: 'DELETE',
         body: '{}',
       });
+      state.expandedUsers.delete(String(userId));
       notify('用户已删除');
     }
 

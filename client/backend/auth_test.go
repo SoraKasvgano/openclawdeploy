@@ -15,7 +15,7 @@ func TestClientLocalAuthProtectsClientAPI(t *testing.T) {
 	app := &App{
 		cfg:    &Config{WebUsername: "admin", WebPassword: "admin"},
 		logger: log.New(io.Discard, "", 0),
-		syncer: NewSyncer(&Config{}, nil),
+		syncer: NewSyncer(func() Config { return Config{} }, nil),
 	}
 
 	server := httptest.NewServer(app.routes())

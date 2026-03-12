@@ -2,7 +2,9 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 type statusResponse struct {
 	DeviceID          string       `json:"device_id"`
 	Identity          Identity     `json:"identity"`
+	IdentityQRSVG     string       `json:"identity_qr_svg"`
 	IdentityMatrixSVG string       `json:"identity_matrix_svg"`
 	Config            configView   `json:"config"`
 	ConfigPath        string       `json:"config_path"`
@@ -28,6 +31,7 @@ type configView struct {
 	ServerURL           string `json:"server_url"`
 	SyncIntervalSeconds int    `json:"sync_interval_seconds"`
 	OpenClawConfigPath  string `json:"openclaw_config_path"`
+	DefaultOpenClawPath string `json:"default_openclaw_path"`
 	AllowRemoteReboot   bool   `json:"allow_remote_reboot"`
 }
 
@@ -37,6 +41,9 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/client/auth/me", a.requireLocalAuth(a.handleClientMe))
 	mux.HandleFunc("POST /api/v1/client/auth/logout", a.requireLocalAuth(a.handleClientLogout))
 	mux.HandleFunc("POST /api/v1/client/auth/account", a.requireLocalAuth(a.handleClientAccount))
+	mux.HandleFunc("POST /api/v1/client/server", a.requireLocalAuth(a.handleClientServer))
+	mux.HandleFunc("POST /api/v1/client/openclaw/path", a.requireLocalAuth(a.handleClientOpenClawPath))
+	mux.HandleFunc("GET /api/v1/client/fs/browse", a.requireLocalAuth(a.handleBrowseLocalFS))
 	mux.HandleFunc("GET /api/v1/client/status", a.requireLocalAuth(a.handleStatus))
 	mux.HandleFunc("POST /api/v1/client/openclaw", a.requireLocalAuth(a.handleWriteOpenClaw))
 	mux.HandleFunc("POST /api/v1/client/sync", a.requireLocalAuth(a.handleSyncNow))
@@ -71,10 +78,12 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	networkOK := checkNetwork(r.Context())
 	identity := CurrentIdentity(&cfg, networkOK)
+	qrSVG := RenderIdentityQRSVG(cfg.DeviceID)
 	shared.WriteJSON(w, http.StatusOK, statusResponse{
 		DeviceID:          cfg.DeviceID,
 		Identity:          identity,
-		IdentityMatrixSVG: RenderIdentityMatrixSVG(cfg.DeviceID),
+		IdentityQRSVG:     qrSVG,
+		IdentityMatrixSVG: qrSVG,
 		Config:            configViewFromConfig(cfg),
 		ConfigPath:        cfg.ConfigPath,
 		ListenAddress:     cfg.Address(),
@@ -198,6 +207,92 @@ func (a *App) handleClientAccount(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleClientServer(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ServerURL string `json:"server_url"`
+	}
+	if err := shared.ReadJSON(r, &payload); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	cfg, err := a.updateConfig(func(next *Config) {
+		next.ServerURL = normalizeServerURL(payload.ServerURL)
+	})
+	if err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if a.syncer != nil {
+		a.syncer.NotifyConfigChanged()
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]string{
+		"server_url": cfg.ServerURL,
+		"message":    "server updated",
+	})
+}
+
+func (a *App) handleClientOpenClawPath(w http.ResponseWriter, r *http.Request) {
+	if a.openclaw == nil {
+		shared.WriteError(w, http.StatusInternalServerError, "openclaw manager is not configured")
+		return
+	}
+
+	var payload struct {
+		OpenClawConfigPath string `json:"openclaw_config_path"`
+	}
+	if err := shared.ReadJSON(r, &payload); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	currentJSON, err := a.openclaw.Read()
+	if err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	normalizedPath := normalizeOpenClawConfigPath(payload.OpenClawConfigPath)
+	if err := prepareOpenClawPath(normalizedPath, currentJSON); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	cfg, err := a.updateConfig(func(next *Config) {
+		next.OpenClawConfigPath = normalizedPath
+	})
+	if err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	a.openclaw.SetPath(cfg.OpenClawConfigPath)
+	if a.syncer != nil {
+		a.syncer.NotifyConfigChanged()
+	}
+
+	shared.WriteJSON(w, http.StatusOK, map[string]string{
+		"openclaw_config_path": cfg.OpenClawConfigPath,
+		"message":              "openclaw path updated",
+	})
+}
+
+func (a *App) handleBrowseLocalFS(w http.ResponseWriter, r *http.Request) {
+	if a.openclaw == nil {
+		shared.WriteError(w, http.StatusInternalServerError, "openclaw manager is not configured")
+		return
+	}
+
+	response, err := buildLocalPathBrowserResponse(r.URL.Query().Get("path"), a.openclaw.Path())
+	if err != nil {
+		shared.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	shared.WriteJSON(w, http.StatusOK, response)
+}
+
 func configViewFromConfig(cfg Config) configView {
 	return configView{
 		WebPort:             cfg.WebPort,
@@ -205,6 +300,27 @@ func configViewFromConfig(cfg Config) configView {
 		ServerURL:           cfg.ServerURL,
 		SyncIntervalSeconds: cfg.SyncIntervalSeconds,
 		OpenClawConfigPath:  cfg.OpenClawConfigPath,
+		DefaultOpenClawPath: defaultOpenClawPath(),
 		AllowRemoteReboot:   cfg.AllowRemoteReboot,
 	}
+}
+
+func prepareOpenClawPath(path string, currentContent string) error {
+	info, err := os.Stat(path)
+	if err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("path points to a directory: %s", path)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+
+	content := strings.TrimSpace(currentContent)
+	if content == "" {
+		content = strings.TrimSpace(defaultOpenClawJSON)
+	}
+
+	return shared.AtomicWriteFile(path, append([]byte(content), '\n'), 0o644)
 }

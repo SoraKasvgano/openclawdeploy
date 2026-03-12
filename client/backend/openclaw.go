@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"openclawdeploy/internal/shared"
@@ -29,6 +30,7 @@ const defaultOpenClawJSON = `{
 `
 
 type OpenClawManager struct {
+	mu     sync.RWMutex
 	path   string
 	logger *log.Logger
 }
@@ -42,29 +44,39 @@ func defaultOpenClawPath() string {
 }
 
 func NewOpenClawManager(path string, logger *log.Logger) *OpenClawManager {
-	return &OpenClawManager{path: path, logger: logger}
+	return &OpenClawManager{path: normalizeOpenClawConfigPath(path), logger: logger}
 }
 
 func (m *OpenClawManager) Path() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.path
 }
 
+func (m *OpenClawManager) SetPath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.path = normalizeOpenClawConfigPath(path)
+}
+
 func (m *OpenClawManager) EnsureFile() error {
-	_, err := os.Stat(m.path)
+	path := m.Path()
+	_, err := os.Stat(path)
 	if err == nil {
 		return nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return shared.AtomicWriteFile(m.path, []byte(defaultOpenClawJSON), 0o644)
+	return shared.AtomicWriteFile(path, []byte(defaultOpenClawJSON), 0o644)
 }
 
 func (m *OpenClawManager) Read() (string, error) {
 	if err := m.EnsureFile(); err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(m.path)
+	path := m.Path()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -87,7 +99,7 @@ func (m *OpenClawManager) Write(content string) error {
 		return err
 	}
 
-	return shared.AtomicWriteFile(m.path, append(pretty, '\n'), 0o644)
+	return shared.AtomicWriteFile(m.Path(), append(pretty, '\n'), 0o644)
 }
 
 func (m *OpenClawManager) Apply(content string) (bool, error) {
@@ -124,4 +136,51 @@ func (m *OpenClawManager) RestartGateway(ctx context.Context) error {
 
 	m.logger.Printf("openclaw restart skipped: executable not found")
 	return nil
+}
+
+func normalizeOpenClawConfigPath(raw string) string {
+	trimmed := strings.TrimSpace(strings.Trim(raw, `"'`))
+	if trimmed == "" {
+		return defaultOpenClawPath()
+	}
+
+	hasTrailingSeparator := strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, `\`)
+	path := normalizeFilesystemPath(trimmed)
+	if path == "" {
+		return defaultOpenClawPath()
+	}
+
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return filepath.Join(path, "openclaw.json")
+	}
+	if hasTrailingSeparator {
+		return filepath.Join(path, "openclaw.json")
+	}
+
+	return path
+}
+
+func normalizeFilesystemPath(raw string) string {
+	trimmed := strings.TrimSpace(strings.Trim(raw, `"'`))
+	if trimmed == "" {
+		return ""
+	}
+
+	trimmed = os.ExpandEnv(trimmed)
+	if strings.HasPrefix(trimmed, "~") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			switch {
+			case trimmed == "~":
+				trimmed = home
+			case strings.HasPrefix(trimmed, "~/"), strings.HasPrefix(trimmed, `~\`):
+				trimmed = filepath.Join(home, trimmed[2:])
+			}
+		}
+	}
+
+	cleaned := filepath.Clean(trimmed)
+	if abs, err := filepath.Abs(cleaned); err == nil {
+		return abs
+	}
+	return cleaned
 }

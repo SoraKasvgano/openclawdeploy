@@ -39,14 +39,14 @@ func New() (*App, error) {
 	}
 
 	logger.Printf("device id: %s", cfg.DeviceID)
-	logger.Printf("device matrix:\n%s", RenderIdentityMatrixASCII(cfg.DeviceID))
+	logger.Printf("device qr code:\n%s", RenderIdentityQRCodeCLI(cfg.DeviceID))
 
 	app := &App{
 		cfg:      cfg,
 		logger:   logger,
 		openclaw: openclaw,
-		syncer:   NewSyncer(cfg, openclaw),
 	}
+	app.syncer = NewSyncer(app.configSnapshot, openclaw)
 	app.server = &http.Server{
 		Addr:              cfg.Address(),
 		Handler:           app.routes(),

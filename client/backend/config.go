@@ -71,9 +71,7 @@ func LoadOrCreateConfig() (*Config, error) {
 	if cfg.SyncIntervalSeconds <= 0 {
 		cfg.SyncIntervalSeconds = 30
 	}
-	if cfg.OpenClawConfigPath == "" {
-		cfg.OpenClawConfigPath = defaultOpenClawPath()
-	}
+	cfg.OpenClawConfigPath = normalizeOpenClawConfigPath(cfg.OpenClawConfigPath)
 
 	if cfg.DeviceID == "" {
 		deviceID, identity, err := GenerateIdentityCode()

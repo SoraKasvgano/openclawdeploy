@@ -86,6 +86,25 @@ func TestLoadOrCreateConfigNormalizesServerURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeOpenClawConfigPathUsesDefaultWhenEmpty(t *testing.T) {
+	withTempClientRuntimeDir(t)
+
+	got := normalizeOpenClawConfigPath("")
+	if got != defaultOpenClawPath() {
+		t.Fatalf("unexpected default openclaw path: %s", got)
+	}
+}
+
+func TestNormalizeOpenClawConfigPathAppendsFilenameForDirectory(t *testing.T) {
+	dir := t.TempDir()
+
+	got := normalizeOpenClawConfigPath(dir)
+	want := filepath.Join(dir, "openclaw.json")
+	if got != want {
+		t.Fatalf("unexpected normalized path: got %s want %s", got, want)
+	}
+}
+
 func withTempClientRuntimeDir(t *testing.T) {
 	t.Helper()
 

@@ -50,61 +50,69 @@ type SyncSnapshot struct {
 }
 
 type Syncer struct {
-	cfg        *Config
-	manager    *OpenClawManager
-	httpClient *http.Client
+	configSnapshot func() Config
+	manager        *OpenClawManager
+	httpClient     *http.Client
 
 	mu      sync.RWMutex
 	lastAt  string
 	lastMsg string
 	lastOK  bool
+	wakeCh  chan struct{}
 }
 
-func NewSyncer(cfg *Config, manager *OpenClawManager) *Syncer {
+func NewSyncer(configSnapshot func() Config, manager *OpenClawManager) *Syncer {
 	return &Syncer{
-		cfg:        cfg,
-		manager:    manager,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		lastMsg:    "尚未同步",
+		configSnapshot: configSnapshot,
+		manager:        manager,
+		httpClient:     &http.Client{Timeout: 15 * time.Second},
+		lastMsg:        "尚未同步",
+		wakeCh:         make(chan struct{}, 1),
 	}
 }
 
 func (s *Syncer) Snapshot() SyncSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	cfg := s.currentConfig()
 	return SyncSnapshot{
 		LastSyncAt:       s.lastAt,
 		LastSyncMessage:  s.lastMsg,
-		ServerConfigured: normalizeServerURL(s.cfg.ServerURL) != "",
+		ServerConfigured: normalizeServerURL(cfg.ServerURL) != "",
 		Connected:        s.lastOK,
 	}
 }
 
 func (s *Syncer) Start(ctx context.Context) {
-	if normalizeServerURL(s.cfg.ServerURL) == "" {
-		s.setStatus("", "未配置服务端地址，已跳过轮询", false)
-		return
-	}
-
-	ticker := time.NewTicker(time.Duration(s.cfg.SyncIntervalSeconds) * time.Second)
-	defer ticker.Stop()
-
-	_ = s.SyncNow(ctx)
 	for {
+		cfg := s.currentConfig()
+		if normalizeServerURL(cfg.ServerURL) == "" {
+			s.setStatus("", "未配置服务端地址，已跳过轮询", false)
+		} else {
+			_ = s.SyncNow(ctx)
+		}
+
+		timer := time.NewTimer(syncInterval(cfg))
 		select {
 		case <-ctx.Done():
+			stopSyncTimer(timer)
 			return
-		case <-ticker.C:
-			_ = s.SyncNow(ctx)
+		case <-s.wakeCh:
+			stopSyncTimer(timer)
+		case <-timer.C:
 		}
 	}
 }
 
 func (s *Syncer) SyncNow(ctx context.Context) error {
-	serverURL := normalizeServerURL(s.cfg.ServerURL)
+	cfg := s.currentConfig()
+	serverURL := normalizeServerURL(cfg.ServerURL)
 	if serverURL == "" {
 		s.setStatus("", "未配置服务端地址", false)
 		return nil
+	}
+	if s.manager == nil {
+		return fmt.Errorf("openclaw manager is not configured")
 	}
 
 	openclawJSON, err := s.manager.Read()
@@ -116,7 +124,7 @@ func (s *Syncer) SyncNow(ctx context.Context) error {
 	networkOK := checkNetwork(ctx)
 	hostname, _ := os.Hostname()
 	payload := HeartbeatRequest{
-		DeviceID:            s.cfg.DeviceID,
+		DeviceID:            cfg.DeviceID,
 		Hostname:            hostname,
 		SystemVersion:       detectSystemVersion(),
 		OS:                  runtime.GOOS,
@@ -129,7 +137,7 @@ func (s *Syncer) SyncNow(ctx context.Context) error {
 		NetworkOK:           networkOK,
 		OpenClawJSON:        openclawJSON,
 		OpenClawHash:        shared.HashString(openclawJSON),
-		SyncIntervalSeconds: s.cfg.SyncIntervalSeconds,
+		SyncIntervalSeconds: cfg.SyncIntervalSeconds,
 	}
 
 	requestBody, err := json.Marshal(payload)
@@ -190,6 +198,39 @@ func (s *Syncer) setStatus(at, message string, ok bool) {
 	s.lastAt = at
 	s.lastMsg = message
 	s.lastOK = ok
+}
+
+func (s *Syncer) NotifyConfigChanged() {
+	select {
+	case s.wakeCh <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Syncer) currentConfig() Config {
+	if s.configSnapshot == nil {
+		return Config{}
+	}
+	return s.configSnapshot()
+}
+
+func syncInterval(cfg Config) time.Duration {
+	if cfg.SyncIntervalSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(cfg.SyncIntervalSeconds) * time.Second
+}
+
+func stopSyncTimer(timer *time.Timer) {
+	if timer == nil {
+		return
+	}
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
 }
 
 func detectSystemVersion() string {

@@ -1,13 +1,15 @@
 package backend
 
 import (
-	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/skip2/go-qrcode"
 
 	"openclawdeploy/internal/shared"
 )
@@ -105,65 +107,60 @@ func primaryIPv4() string {
 	return ""
 }
 
-func RenderIdentityMatrixSVG(value string) string {
-	const cells = 21
-	const scale = 10
+func RenderIdentityQRSVG(value string) string {
+	bitmap, err := identityQRBitmap(value)
+	if err != nil {
+		return ""
+	}
 
-	sum := sha256.Sum256([]byte(value))
+	size := len(bitmap)
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" aria-label="identity matrix">`, cells*scale, cells*scale))
+	builder.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" aria-label="device qr code">`, size, size))
 	builder.WriteString(`<rect width="100%" height="100%" fill="#ffffff"/>`)
+	builder.WriteString(`<g fill="#111111">`)
 
-	for y := range cells {
-		for x := range cells {
-			if drawFinder(x, y, cells) || matrixBit(sum, x, y) {
-				builder.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" rx="1" fill="#132238"/>`, x*scale, y*scale, scale, scale))
+	for y := range bitmap {
+		for x := range bitmap[y] {
+			if bitmap[y][x] {
+				builder.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="1" height="1"/>`, x, y))
 			}
 		}
 	}
 
-	builder.WriteString(`</svg>`)
+	builder.WriteString(`</g></svg>`)
 	return builder.String()
+}
+
+func RenderIdentityQRCodeCLI(value string) string {
+	code, err := newIdentityQRCode(value)
+	if err != nil {
+		return value + "\n"
+	}
+	return code.ToSmallString(true)
+}
+
+func RenderIdentityMatrixSVG(value string) string {
+	return RenderIdentityQRSVG(value)
 }
 
 func RenderIdentityMatrixASCII(value string) string {
-	const cells = 21
-	sum := sha256.Sum256([]byte(value))
-
-	var builder strings.Builder
-	for y := range cells {
-		for x := range cells {
-			if drawFinder(x, y, cells) || matrixBit(sum, x, y) {
-				builder.WriteString("██")
-			} else {
-				builder.WriteString("  ")
-			}
-		}
-		builder.WriteByte('\n')
-	}
-	return builder.String()
+	return RenderIdentityQRCodeCLI(value)
 }
 
-func matrixBit(sum [32]byte, x, y int) bool {
-	index := (x + y*7) % len(sum)
-	shift := uint((x*3 + y) % 8)
-	return ((sum[index] >> shift) & 1) == 1
+func identityQRBitmap(value string) ([][]bool, error) {
+	code, err := newIdentityQRCode(value)
+	if err != nil {
+		return nil, err
+	}
+	return code.Bitmap(), nil
 }
 
-func drawFinder(x, y, cells int) bool {
-	return finderAt(x, y, 0, 0) ||
-		finderAt(x, y, cells-7, 0) ||
-		finderAt(x, y, 0, cells-7)
-}
-
-func finderAt(x, y, left, top int) bool {
-	if x < left || x >= left+7 || y < top || y >= top+7 {
-		return false
+func newIdentityQRCode(value string) (*qrcode.QRCode, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, errors.New("device id is empty")
 	}
-	if x == left || x == left+6 || y == top || y == top+6 {
-		return true
-	}
-	return x >= left+2 && x <= left+4 && y >= top+2 && y <= top+4
+	return qrcode.New(value, qrcode.Medium)
 }
 
 func blankTo(value, fallback string) string {
