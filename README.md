@@ -1,4 +1,4 @@
-[简体中文](README_ZH.md)
+[英文](README.md)      [简体中文](README_ZH.md)
 
 # OpenClaw Deploy
 

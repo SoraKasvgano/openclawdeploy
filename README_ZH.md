@@ -1,4 +1,4 @@
-[简体中文](README.md)
+[英文](README.md)      [简体中文](README_ZH.md)
 # OpenClaw Deploy
 
 OpenClaw Deploy 是一个使用 Go 编写的双端项目，用于管理和部署 OpenClaw 节点。
